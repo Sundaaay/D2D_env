@@ -16,7 +16,7 @@ while True:
     print('Please input the name of the file you want:')
     filename = input()
     s.sendall(bytes(filename,"utf-8"))
-    file_object = open("Sever_"+filename,'w')
+    
 
     
     print('Please choose a client which could send the file to you!')
@@ -25,7 +25,7 @@ while True:
     choosed_client = input()
     s.sendall(bytes(choosed_client,"utf-8"))
     
-    
+    file_object = open(choosed_client+"_"+filename,'w')
     file_data = s.recv(4096)
     file_object.write(str(file_data,"utf8"))
     file_object.close()
