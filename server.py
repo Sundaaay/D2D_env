@@ -1,120 +1,162 @@
-import os
 import socketserver
-import threading
+import json
+import time
+import os
+import datetime
+i = 0
+
+# 所有可传送的文件名
 
 
-file_dict = {}
-host_position = {}
-BASE_LOCALHOST = '0.0.0.0'
-BASE_POSITION = (34, 56)
-FILE_DIR = 'F:/Server'
-HISTORY_DIR = 'F:/file_tans_history.txt'
+data = {}
+
+# # 传送文件历史记录
+# trans_data = {}
+
+# 位置信息
+all_client_position = []
+
+# 存储所有的文件夹所在的位置
+FILE_DIR = os.getcwd()+'/server_dir'  # '/home/ry/桌面/D2D_env-zhao_V-2/Server/server_dir'
 
 
-def package(message, size):
-    new_message = message
-    while len(bytes(new_message, 'utf-8')) < size:
-        new_message = new_message + '-'
-    return new_message
+def get_all_file():
+    file_list = os.listdir(FILE_DIR)
+    return file_list
+
+# 所有客户端所拥有的文件的字典
+all_files = get_all_file()
+
+# 产生位置信息的函数，返回值为所有客户端的位置信息
+def product_position(all_client):
+        all_client_position = []
+        
+        for m in range(len(all_client)):
+                positon = (m, m)
+                all_client_position.append(positon) 
+
+        time.sleep(2)
+        return all_client_position
 
 
-def find_file_host(file_dict, filename, client_address):
-    host_list = list()
-    for i, j in file_dict.items():
-        for m in j:
-            if m == filename and i != client_address:
-                host_list.append(i)
-    return host_list
+def find_the_best_client(clients_with_file, all_client_position, all_client, client_name):
+        if len(clients_with_file) == 0:
+                choosed_name = 'basestation'
+                return choosed_name
+        else:
+                clients_with_file_positon = []
+                instance = []
+                 # 确定请求传送文件的客户端的位置
+                temp = all_client.index(client_name)
+                client_name_positoin = all_client_position[temp]
+
+                # 确定所有拥有指定文件的客户端的位置
+                for n in range(len(clients_with_file)):
+                        temp = all_client.index(clients_with_file[n])
+                        clients_with_file_positon.append(all_client_position[temp])
+
+                for m in range(len(clients_with_file)):
+                        length = (clients_with_file_positon[m][0] - client_name_positoin[0])**2 + (clients_with_file_positon[m][1] - client_name_positoin[1])**2
+                        instance.append(length)
+                temp = instance.index(min(instance))
+                choosed_name = clients_with_file[temp]
+                print(clients_with_file, instance)
+                return choosed_name
 
 
-def choose_best_sender(host_position, host_have_the_file, request_ip):
-    if len(host_have_the_file) == 0:
-        print('there is not the file in the System!')
-        return -1
-    p1 = host_position[request_ip]
-    distance_dict = dict()
-    for name in host_have_the_file:
-        p = host_position[name]
-        distance_dict[name] = (pow(p1[0] - p[0], 2) + pow(p1[1] - p[1], 2)) ** 0.5
-    best_host = host_have_the_file[0]
-    for name, dis in distance_dict.items():
-        if dis <= distance_dict[best_host]:
-            best_host = name
-    print('the best sender is {}'.format(best_host))
-    return best_host
-
-
-def write_trans_history(req_host, send_host, file_name):
-    fp = open(HISTORY_DIR, 'a')
-    fp.write(send_host + ':' + str(host_position[send_host]) + '-->' + req_host + ':' + str(
-        host_position[req_host]) + ':' + file_name + '\n')
-    fp.close()
+def write_history(source_host, target_host, filename):
+    pwd = os.getcwd()
+    hisotory_file = open(os.getcwd()+'/history', 'a')
+    cur_time = str(time.time())
+    hisotory_file.write('time:{}\tsource_host:{}\ttaget_host:{}\ttrans_file:{}\t\n'.format(cur_time, source_host, target_host, filename))
+    hisotory_file.close()
 
 
 class myTCPHandler(socketserver.BaseRequestHandler):
-    def handle(self):
-        while 1:
-            # 从本地读取某一个文件夹中的文件数据当作基站所拥有的文件
-            file_list = os.listdir(FILE_DIR)
-            file_dict[BASE_LOCALHOST] = tuple(file_list)
-            host_position[BASE_LOCALHOST] = BASE_POSITION
+        
+        def handle(self):
+                
+                clients = []  # 已连接客户端名称
+                
+                # 拥有指定文件的客户端列表，默认基站拥有全部文件
+                clients_with_file = []
+                global i
 
-            # 0、接收客户端发送过来的位置信息，保存到 host_position字典中
-            client_data = self.request.recv(1024)
-            data = str(client_data, 'utf-8').rstrip('-')
-            host_position[self.client_address[0]] = eval(data)
-            for i, j in host_position.items():
-                print('{}:{}\n'.format(i, j))
+                # 最新连接的客户端代号，如C1 , C2
+                client_name = 'C'+str(i)
 
-            # 1、接收客户端发送过来的文件列表,添加到file_dict字典中
-            client_data = self.request.recv(1024)
-            print('receive file_dict from client:{}'.format(self.client_address))
-            data = str(client_data, 'utf-8').rstrip('-')
-            client_file_list = data.split('$')
-            file_dict[self.client_address[0]] = tuple(client_file_list)
-            print('update file_dict!')
-            for i, j in file_dict.items():
-                print('{} 里的文件有: '.format(i), end='')
-                for m in j:
-                    print('{}    '.format(m), end='')
-                print('\n')
-            print('*' * 20)
+                # 第一次发送
+                self.request.sendall(bytes(client_name, encoding="utf8"))
+                i += 1
+                clients.append(client_name)
+                print('get connection from', self.client_address, 'as', client_name, data)
 
-            # 2、将服务器中的file_dict 发送发客户端 因为字典转换成字符串后在客户端无法将这个字符串转换成字典
-            self.request.sendall(bytes(package(str(file_dict), 1024), 'utf-8'))
-            print('sended file_dict to Client:  {}...'.format(self.client_address[0]))
-            print('*' * 20)
+                while 1:
+                        '''
+                        首先说一下将前面的过程移动到这里的原因：
+                        1、客户端在接收到文件后，它的信息就变了，就要进行跟新,每次传输过后就跟新一次。
+                        这里去掉第二次发送列表到客户端，转而由客户端发送过来。
+                        '''
+                        # 第一点五次接收客户端发送过来的文件
+                        self.data = self.request.recv(1024)
+                        client_file = json.loads(str(self.data, encoding='utf-8'))
+                        data[client_name] = tuple(client_file)
+                        print('{} have {}'.format(client_name, client_file))
 
-            # 3、接收客户端发来的所请求的文件名
-            filename_data = self.request.recv(1024)
-            req_filename = str(filename_data, 'utf-8').rstrip('-')
-            if req_filename == 'have_all_file':
-                continue
-            print('client:  {} choose a file:  {}'.format(self.client_address[0], req_filename))
-            print('*' * 20)
+                        # 第二次发送,将client_file发给客户端
+                        # self.request.sendto(json.dumps(client_file).encode(), (h, p))
 
-            # 4、在file_dict 的 value中查找这个文件，返回一个有这个文件的主机的ip 的列表
-            host_have_the_file = find_file_host(file_dict, req_filename, self.client_address[0])
+                        # 第三次发送，将all_files发给客户端
+                        all_files_list = list(all_files)
+                        self.request.sendto(json.dumps(all_files).encode(), (h, p))
+                        # 第一次接收
+                        self.data = self.request.recv(1024)
+                        filename = str(self.data, encoding="utf-8")
 
-            # 在包含了该文件的主机列表中选择，距离请求主机最近的主机作为最优文件发送者
-            best_sender = choose_best_sender(host_position, host_have_the_file, self.client_address[0])
+                        # 寻找哪些客户端含有指定文件
+                        all_client = list(data.keys())
+                        for m in range(len(all_client)):
+                            for n in range(len(data[all_client[m]])):
+                                if all_client[m] == client_name:
+                                        continue
+                                if data[all_client[m]][n] == filename:
+                                        clients_with_file.append(all_client[m])
 
-            # 如果该系统中没有这个文件就返回 404 错误，若有就将这个主机发送给请求主机。
-            if best_sender == -1:
-                print('find file error 404 !')
-                self.request.sendall(bytes(package('404', 1024), 'utf-8'))
-                continue
-            else:
-                self.request.sendall(bytes(package(best_sender, 1024), 'utf-8'))
-            write_trans_history(self.client_address[0], best_sender, req_filename)
+                        # 获取所有主机的位置信息
+                        all_client_position = product_position(all_client)
 
+                        choosed_name = find_the_best_client(clients_with_file, all_client_position, all_client, client_name)
 
-def deal_request():
-    h, p = '', 8888
-    server = socketserver.ThreadingTCPServer((h, p), myTCPHandler)
-    server.serve_forever()
+                        print(choosed_name, 'will send', filename, 'to', client_name)
+                        # 第四次发送
+                        self.request.sendall(bytes(str(choosed_name), encoding="utf8"))
+                        file_object = open(FILE_DIR+'/'+filename)
+                        try:
+                                file_data = file_object.read()
+                        finally:
+                                file_object.close()
+                        print(choosed_name, 'has send', filename, 'to', self.client_address, client_name)
+                        self.request.sendall(bytes(file_data, encoding="utf8"))
+                        # 更新data字典
+                        data[client_name] = data[client_name]+tuple([filename])
+                        # 显示更新后的data字典
+                        # print(data[client_name])
+                        '''
+                        这里去掉原来的在服务端进行传输情况的打印，将历史写入一个文件中。
+                        '''
+                        write_history(choosed_name, client_name, filename)
 
+                        # if choosed_name in trans_data.keys():
+                        #         trans_data[choosed_name] = trans_data[choosed_name] + tuple([client_name,filename])
+                        # else:
+                        #         trans_data[choosed_name] = tuple([client_name, filename])
+                        print('------------------------------------------------------')
 
-thread_del_request = threading.Thread(target=deal_request(), args=())
-thread_del_request.start()
+                        # 重置该列表，以便下次使用
+                        clients_with_file = []
+                        
+
+h, p = '0.0.0.0', 9999
+server = socketserver.ThreadingTCPServer((h, p), myTCPHandler)
+server.serve_forever()
 
